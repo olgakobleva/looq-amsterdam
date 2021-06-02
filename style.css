@@ -46,6 +46,11 @@ body {
   background-image: url("img/icon-phone-header.svg");
 }
 
+.header-instagram {
+  padding-left: 25px;
+  background-image: url("img/icon-instagram-header.svg");
+}
+
 .hero-image {
   margin-bottom: 620px;
 }
@@ -191,4 +196,9 @@ body {
 .footer-phone {
   padding-left: 25px;
   background-image: url("img/icon-phone-footer.svg");
+}
+
+.footer-instagram {
+  padding-left: 25px;
+  background-image: url("img/icon-instagram-header.svg");
 }
