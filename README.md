@@ -1,1 +1,1 @@
-# my-site
+# looq-amsterdam
