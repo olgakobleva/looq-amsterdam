@@ -1,0 +1,113 @@
+name: DevOps Agent
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "frames/**"          # Новые PNG-кадры запускают оптимизацию
+      - "frames-raw/**"
+  workflow_dispatch:         # Запуск вручную из GitHub UI
+    inputs:
+      max_width:
+        description: "Max frame width px (0 = keep original)"
+        required: false
+        default: "1400"
+      frames_dir:
+        description: "Frames input directory"
+        required: false
+        default: "frames"
+
+jobs:
+  optimize-frames:
+    name: Auto-optimize Frame Sequences
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install sharp
+        run: npm install sharp
+
+      - name: Run frame optimizer
+        run: |
+          FRAMES_DIR="${{ github.event.inputs.frames_dir || 'frames' }}"
+          MAX_W="${{ github.event.inputs.max_width || '1400' }}"
+
+          if [ -d "$FRAMES_DIR" ]; then
+            echo "Optimizing frames in ./$FRAMES_DIR ..."
+            node optimize-frames.js "./$FRAMES_DIR" "./frames-optimized" "$MAX_W"
+          else
+            echo "No frames directory found, skipping optimization"
+          fi
+
+      - name: Commit optimized frames
+        run: |
+          git config user.name  "DevOps Agent"
+          git config user.email "devops@looq.amsterdam"
+          git add frames-optimized/ || true
+          git diff --staged --quiet || git commit -m "chore: auto-optimize frames → WebP [devops-agent]"
+          git push || echo "Nothing to push"
+
+  size-report:
+    name: Asset Size Report
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate size report
+        run: |
+          echo "## Asset Size Report" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| File | Size |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|------|" >> $GITHUB_STEP_SUMMARY
+
+          # HTML files
+          find . -name "*.html" -not -path "*/node_modules/*" | while read f; do
+            SIZE=$(du -sh "$f" | cut -f1)
+            echo "| $f | $SIZE |" >> $GITHUB_STEP_SUMMARY
+          done
+
+          # CSS files
+          find . -name "*.css" -not -path "*/node_modules/*" | while read f; do
+            SIZE=$(du -sh "$f" | cut -f1)
+            echo "| $f | $SIZE |" >> $GITHUB_STEP_SUMMARY
+          done
+
+          # JS files
+          find . -name "*.js" -not -path "*/node_modules/*" | while read f; do
+            SIZE=$(du -sh "$f" | cut -f1)
+            echo "| $f | $SIZE |" >> $GITHUB_STEP_SUMMARY
+          done
+
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Frames summary
+          for dir in frames frames-raw frames-optimized; do
+            if [ -d "$dir" ]; then
+              TOTAL=$(du -sh "$dir" 2>/dev/null | cut -f1)
+              COUNT=$(find "$dir" -type f | wc -l)
+              echo "**$dir**: $COUNT files, $TOTAL total" >> $GITHUB_STEP_SUMMARY
+            fi
+          done
+
+  deploy-preview:
+    name: Deploy Preview (Netlify / GitHub Pages)
+    runs-on: ubuntu-latest
+    needs: [optimize-frames]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: .
+          exclude_assets: ".github,node_modules,*.md,optimize-frames.js,frames-raw,outlines.css"
+        continue-on-error: true   # не блокирует если Pages не настроен

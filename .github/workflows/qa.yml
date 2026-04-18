@@ -1,0 +1,133 @@
+name: QA Agent
+
+on:
+  push:
+    branches: [main, "claude/**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  html-validation:
+    name: HTML Validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate HTML
+        uses: Cyb3r-Jak3/html5validator-action@v7.2.0
+        with:
+          root: .
+          extra: --ignore-re "Attribute .data-wf" # Webflow custom attrs
+
+  accessibility:
+    name: Accessibility & Alt Texts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check missing alt attributes
+        run: |
+          echo "Checking for images without alt attributes..."
+          MISSING=$(grep -rn '<img' --include="*.html" . | grep -v 'alt=' | grep -v node_modules)
+          if [ -n "$MISSING" ]; then
+            echo "❌ Images without alt attribute:"
+            echo "$MISSING"
+            exit 1
+          else
+            echo "✅ All images have alt attributes"
+          fi
+
+      - name: Check missing title tag
+        run: |
+          for f in $(find . -name "*.html" -not -path "*/node_modules/*"); do
+            if ! grep -q '<title>' "$f"; then
+              echo "❌ Missing <title> in $f"
+              exit 1
+            fi
+          done
+          echo "✅ All HTML files have <title>"
+
+      - name: Check meta description
+        run: |
+          for f in $(find . -name "*.html" -not -path "*/node_modules/*"); do
+            if ! grep -q 'meta name="description"' "$f"; then
+              echo "⚠️  Missing meta description in $f"
+            fi
+          done
+
+  image-audit:
+    name: Image Size Audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check for large unoptimized images
+        run: |
+          echo "Scanning for large images (>500KB)..."
+          FOUND=0
+          find . -not -path "*/node_modules/*" \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) | while read f; do
+            SIZE=$(stat -c%s "$f")
+            if [ "$SIZE" -gt 512000 ]; then
+              echo "⚠️  Large image: $f — $(( SIZE / 1024 ))KB — consider running optimize-frames.js"
+              FOUND=1
+            fi
+          done
+          find . -not -path "*/node_modules/*" \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" \) -size +500k \
+            -exec echo "⚠️  {}" \; | grep -q . && echo "" && echo "Run: node optimize-frames.js ./frames ./frames-out" || echo "✅ No oversized images found"
+
+      - name: Check WebP availability for PNG frames
+        run: |
+          echo "Checking for PNG frames without WebP equivalents..."
+          MISSING=0
+          find . -name "frame_*.png" -not -path "*/node_modules/*" | while read f; do
+            WEBP="${f%.png}.webp"
+            if [ ! -f "$WEBP" ]; then
+              echo "⚠️  No WebP version: $f"
+              MISSING=1
+            fi
+          done
+          echo "✅ WebP check complete"
+
+  javascript:
+    name: JavaScript Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Syntax check all JS files
+        run: |
+          find . -name "*.js" -not -path "*/node_modules/*" | while read f; do
+            node --check "$f" && echo "✅ $f" || exit 1
+          done
+
+  lighthouse:
+    name: Lighthouse CI
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install serve + Lighthouse CI
+        run: npm install -g @lhci/cli serve --silent
+
+      - name: Build & run Lighthouse
+        run: |
+          serve -s . -p 3000 &
+          sleep 2
+          lhci autorun \
+            --collect.url=http://localhost:3000 \
+            --collect.numberOfRuns=1 \
+            --assert.preset=lighthouse:no-pwa \
+            --assert.assertions.categories:performance=warn \
+            --assert.assertions.categories:accessibility=warn \
+            --assert.assertions.categories:best-practices=warn \
+            --assert.assertions.categories:seo=warn \
+            --upload.target=temporary-public-storage
+        continue-on-error: true
