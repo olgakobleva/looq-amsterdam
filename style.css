@@ -202,3 +202,51 @@ body {
   padding-left: 25px;
   background-image: url("img/icon-instagram-header.svg");
 }
+
+/* ---- Bottle scroll demo ---- */
+.bottle-section {
+  height: 300vh;
+  background: linear-gradient(170deg, #0c1c12 0%, #1a3a22 50%, #0c1c12 100%);
+  min-width: 0;
+}
+
+.bottle-sticky-container {
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 20px;
+}
+
+.bottle-heading {
+  font-family: "Old Standard TT", "Times", "Times New Roman", serif;
+  font-size: 52px;
+  font-weight: 400;
+  color: #f0e8d0;
+  margin: 0;
+  letter-spacing: 0.08em;
+  opacity: 0.92;
+}
+
+#bottle-canvas {
+  display: block;
+}
+
+.bottle-scroll-hint {
+  position: absolute;
+  bottom: 36px;
+  margin: 0;
+  color: rgba(240, 232, 208, 0.5);
+  font-size: 13px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  animation: hint-bounce 2s ease-in-out infinite;
+}
+
+@keyframes hint-bounce {
+  0%, 100% { transform: translateY(0);   opacity: 0.5; }
+  50%       { transform: translateY(7px); opacity: 0.85; }
+}
